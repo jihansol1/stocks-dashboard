@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import config, finnhub_client, main
+from app import config, db, finnhub_client, main
 from app.finnhub_client import FinnhubError
 
 FAKE_NEWS = [
@@ -129,3 +129,16 @@ def test_refresh_fetches_after_ttl_expiry(client, monkeypatch):
 
 def test_refresh_unknown_ticker_404(client):
     assert client.post("/stocks/MSFT/refresh").status_code == 404
+
+
+def test_new_market_day_refresh_on_dashboard_load(client):
+    # Seed the watchlist directly, bypassing POST /stocks and its initial fetch.
+    conn = db.get_connection()
+    conn.execute("INSERT INTO watchlist (ticker, company_name) VALUES ('AAPL', 'Apple Inc')")
+    conn.commit()
+    conn.close()
+
+    # No last_refreshed_date in meta means this load counts as a new market day,
+    # so GET /stocks fans out over the watchlist before rendering.
+    [row] = client.get("/stocks").json()
+    assert row["article_count"] == 2

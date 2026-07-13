@@ -78,6 +78,9 @@ def add_stock(body: StockCreate, conn: sqlite3.Connection = Depends(get_db)):
 
 @app.get("/stocks")
 def list_stocks(conn: sqlite3.Connection = Depends(get_db)):
+    # First dashboard load of a new market day refreshes the whole watchlist
+    # before rendering (decision 4: refresh-on-first-load, not a cron).
+    refresh.refresh_all_if_new_day(conn)
     rows = conn.execute(
         """
         SELECT w.ticker, w.company_name, w.added_at,
