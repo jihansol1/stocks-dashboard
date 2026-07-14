@@ -66,7 +66,7 @@ def refresh_ticker(
         ttl_seconds = REFRESH_TTL_SECONDS
     elapsed = _seconds_since_last_fetch(conn, ticker)
     if elapsed is not None and elapsed < ttl_seconds:
-        return {"refreshed": False, "fetched": 0, "inserted": 0}
+        return {"refreshed": False, "fetched": 0, "inserted": 0, "enriched": 0}
 
     stats = ingest.ingest_news(conn, ticker)
     _stamp_last_fetch(conn, ticker)
