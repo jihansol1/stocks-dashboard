@@ -135,3 +135,31 @@ def refresh_stock(ticker: str, conn: sqlite3.Connection = Depends(get_db)):
         return refresh.refresh_ticker(conn, ticker)
     except FinnhubError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
+
+
+def _fts_match_query(user_query: str) -> str:
+    # Quote each token so FTS5 operators and punctuation in user input
+    # (AND, OR, quotes, parens) are matched as plain text. Tokens are
+    # implicitly ANDed.
+    tokens = user_query.replace('"', " ").split()
+    return " ".join(f'"{token}"' for token in tokens)
+
+
+@app.get("/search")
+def search(q: str, limit: int = 50, conn: sqlite3.Connection = Depends(get_db)):
+    match = _fts_match_query(q)
+    if not match:
+        raise HTTPException(status_code=400, detail="Search query is empty")
+    rows = conn.execute(
+        """
+        SELECT a.id, a.ticker, a.headline, a.source, a.url, a.published_at,
+               a.fetched_at, a.summary, a.sentiment
+        FROM articles_fts
+        JOIN articles a ON a.id = articles_fts.rowid
+        WHERE articles_fts MATCH ?
+        ORDER BY articles_fts.rank
+        LIMIT ?
+        """,
+        (match, limit),
+    ).fetchall()
+    return [dict(row) for row in rows]
