@@ -1,6 +1,13 @@
 import pytest
 
-from app import db
+from app import config, db
+
+
+@pytest.fixture(autouse=True)
+def no_real_api_keys(monkeypatch):
+    """Tests must never reach Finnhub or Anthropic, even if real keys are set."""
+    monkeypatch.setattr(config, "FINNHUB_API_KEY", "")
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
 
 
 @pytest.fixture

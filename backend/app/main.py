@@ -71,7 +71,7 @@ def add_stock(body: StockCreate, conn: sqlite3.Connection = Depends(get_db)):
         news = refresh.refresh_ticker(conn, ticker)
     except FinnhubError:
         logger.exception("Initial news fetch failed for %s", ticker)
-        news = {"refreshed": False, "fetched": 0, "inserted": 0}
+        news = {"refreshed": False, "fetched": 0, "inserted": 0, "enriched": 0}
 
     return {"ticker": ticker, "company_name": resolved["company_name"], "news": news}
 
