@@ -87,3 +87,25 @@ export function searchArticles(q: string): Promise<Article[]> {
 export function getSymbolSuggestions(q: string): Promise<SymbolSuggestion[]> {
   return request(`/symbols?q=${encodeURIComponent(q)}`)
 }
+
+export type PriceRange = "1d" | "5d" | "1mo" | "6mo" | "1y"
+
+export interface PricePoint {
+  t: number // unix seconds
+  c: number // close
+}
+
+export interface PriceSeries {
+  ticker: string
+  range: PriceRange
+  currency: string | null
+  price: number | null
+  prev_close: number | null
+  change: number | null
+  change_percent: number | null
+  points: PricePoint[]
+}
+
+export function getPrices(ticker: string, range: PriceRange = "1d"): Promise<PriceSeries> {
+  return request(`/stocks/${encodeURIComponent(ticker)}/prices?range=${range}`)
+}

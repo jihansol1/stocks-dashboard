@@ -105,6 +105,15 @@ Phase 7 adds an embedding column or a companion table keyed by `articles.id`.
   wiring; the shape above is stable but field names may differ.
 - Key in `FINNHUB_API_KEY` (env, never committed).
 
+**Yahoo Finance chart API (price history only)**
+- Powers the sidebar sparklines and the interactive chart panel. Finnhub's free
+  tier gates historical candles (`/stock/candle` returns 403), so price series
+  come from Yahoo's public chart endpoint (no key, unofficial). Confined to the
+  thin `prices.py` module with a 5 minute in-memory cache per ticker+range; if
+  it breaks or a paid Finnhub tier arrives, swap that one module.
+- Prices are display-only research context. No portfolio valuation, no trading
+  (see non-goals).
+
 **Anthropic Messages API**
 - One call per new article at ingestion. Prompt for a short summary and a
   bullish/bearish/neutral tag; require the model to return strict JSON

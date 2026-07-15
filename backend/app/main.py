@@ -8,7 +8,7 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config, db, refresh
+from . import config, db, prices, refresh
 from . import finnhub_client
 from .finnhub_client import FinnhubError
 
@@ -164,6 +164,24 @@ def refresh_stock(ticker: str, conn: sqlite3.Connection = Depends(get_db)):
     try:
         return refresh.refresh_ticker(conn, ticker)
     except FinnhubError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/stocks/{ticker}/prices")
+def stock_prices(
+    ticker: str,
+    range: str = "1d",
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Price series for the sidebar sparkline and the chart panel."""
+    ticker = ticker.upper()
+    if conn.execute("SELECT 1 FROM watchlist WHERE ticker = ?", (ticker,)).fetchone() is None:
+        raise HTTPException(status_code=404, detail="Ticker not on watchlist")
+    if range not in prices.RANGES:
+        raise HTTPException(status_code=400, detail=f"range must be one of {sorted(prices.RANGES)}")
+    try:
+        return prices.get_prices(ticker, range)
+    except prices.PriceError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
 
