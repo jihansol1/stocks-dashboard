@@ -1,15 +1,16 @@
 """Ingestion pipeline: fetch a recent news window, dedupe by url, store,
-then enrich each new article with an AI summary + sentiment tag.
+then queue the new articles for background AI enrichment.
 
-An AI failure never blocks caching: the article keeps null summary/sentiment
-and can be enriched on a later pass.
+Caching never waits on the AI layer: the response returns as soon as rows are
+stored, and summaries/sentiment fill in as the background workers finish. An
+AI failure just leaves null fields for a later pass.
 """
 
 import logging
 import sqlite3
 from datetime import UTC, datetime, timedelta
 
-from . import ai, finnhub_client
+from . import enrich, finnhub_client
 
 logger = logging.getLogger(__name__)
 
@@ -25,31 +26,17 @@ def _to_iso(unix_seconds) -> str | None:
         return None
 
 
-def _enrich(conn: sqlite3.Connection, ticker: str, item: dict, url: str) -> bool:
-    """AI summary + sentiment for one stored article. Never raises."""
-    try:
-        result = ai.enrich_article(ticker, item["headline"], item.get("summary"))
-    except ai.AIError as exc:
-        logger.warning("AI enrichment failed for %s (%s); cached with nulls", url, exc)
-        return False
-    conn.execute(
-        "UPDATE articles SET summary = ?, sentiment = ? WHERE url = ?",
-        (result["summary"], result["sentiment"], url),
-    )
-    return True
-
-
 def ingest_news(
     conn: sqlite3.Connection,
     ticker: str,
     window_days: int = DEFAULT_WINDOW_DAYS,
 ) -> dict:
-    """Fetch recent news for one ticker; store and enrich new articles.
+    """Fetch recent news for one ticker; store new articles and queue enrichment.
 
     Inserts are idempotent on url (INSERT OR IGNORE against the UNIQUE
-    constraint), so AI runs only for articles not already cached. A bad
-    individual item is logged and skipped, never fatal.
-    Returns {"fetched": n, "inserted": n, "enriched": n}.
+    constraint), so enrichment is queued only for articles not already cached.
+    A bad individual item is logged and skipped, never fatal.
+    Returns {"fetched": n, "inserted": n, "queued": n}.
     """
     today = datetime.now(tz=UTC).date()
     from_date = (today - timedelta(days=window_days)).isoformat()
@@ -57,8 +44,7 @@ def ingest_news(
 
     items = finnhub_client.company_news(ticker, from_date, to_date)
 
-    inserted = 0
-    enriched = 0
+    pending: list[dict] = []
     for item in items:
         try:
             url = item.get("url")
@@ -75,10 +61,13 @@ def ingest_news(
                 (ticker, headline, item.get("source"), url, _to_iso(item.get("datetime"))),
             )
             if cur.rowcount:
-                inserted += 1
-                enriched += _enrich(conn, ticker, item, url)
+                pending.append(
+                    {"url": url, "headline": headline, "snippet": item.get("summary")}
+                )
         except sqlite3.Error:
             logger.exception("Failed to store article for %s: %s", ticker, item.get("url"))
-    conn.commit()
+    conn.commit()  # rows must be visible before the background workers start
 
-    return {"fetched": len(items), "inserted": inserted, "enriched": enriched}
+    enrich.schedule(ticker, pending)
+
+    return {"fetched": len(items), "inserted": len(pending), "queued": len(pending)}

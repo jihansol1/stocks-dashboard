@@ -44,7 +44,11 @@ export function StockPanel({
     try {
       const stats = await refreshStock(stock.ticker)
       if (stats.refreshed) {
-        setStatus(`Fetched ${stats.fetched}, ${stats.inserted} new`)
+        setStatus(
+          stats.inserted > 0
+            ? `Fetched ${stats.fetched}, ${stats.inserted} new. AI summaries are generating in the background.`
+            : `Fetched ${stats.fetched}, nothing new`,
+        )
         await load()
         onChanged()
       } else {

@@ -8,6 +8,9 @@ export interface Stock {
   added_at: string
   article_count: number
   latest_published_at: string | null
+  bullish_count: number | null
+  bearish_count: number | null
+  neutral_count: number | null
 }
 
 export interface Article {
@@ -26,13 +29,18 @@ export interface RefreshStats {
   refreshed: boolean
   fetched: number
   inserted: number
-  enriched: number
+  queued: number
 }
 
 export interface AddStockResult {
   ticker: string
   company_name: string | null
   news: RefreshStats
+}
+
+export interface SymbolSuggestion {
+  ticker: string
+  name: string
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -77,4 +85,30 @@ export function refreshStock(ticker: string): Promise<RefreshStats> {
 
 export function searchArticles(q: string): Promise<Article[]> {
   return request(`/search?q=${encodeURIComponent(q)}`)
+}
+
+export function getSymbolSuggestions(q: string): Promise<SymbolSuggestion[]> {
+  return request(`/symbols?q=${encodeURIComponent(q)}`)
+}
+
+export type PriceRange = "1d" | "5d" | "1mo" | "6mo" | "1y"
+
+export interface PricePoint {
+  t: number // unix seconds
+  c: number // close
+}
+
+export interface PriceSeries {
+  ticker: string
+  range: PriceRange
+  currency: string | null
+  price: number | null
+  prev_close: number | null
+  change: number | null
+  change_percent: number | null
+  points: PricePoint[]
+}
+
+export function getPrices(ticker: string, range: PriceRange = "1d"): Promise<PriceSeries> {
+  return request(`/stocks/${encodeURIComponent(ticker)}/prices?range=${range}`)
 }

@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from app import ai, config, db, finnhub_client, main
+from app import ai, config, db, enrich, finnhub_client, main
 from app.finnhub_client import FinnhubError
 
 FAKE_NEWS = [
@@ -38,6 +38,10 @@ def client(tmp_path, monkeypatch):
         "enrich_article",
         lambda ticker, headline, snippet: {"summary": "AI summary.", "sentiment": "neutral"},
     )
+    # Run queued enrichment synchronously so tests are deterministic.
+    monkeypatch.setattr(
+        enrich, "schedule", lambda ticker, items: enrich.enrich_batch(ticker, items)
+    )
     with TestClient(main.app) as client:
         yield client
 
@@ -48,7 +52,7 @@ def test_add_stock_validates_inserts_and_fetches(client):
     body = resp.json()
     assert body["ticker"] == "AAPL"
     assert body["company_name"] == "Apple Inc"
-    assert body["news"] == {"refreshed": True, "fetched": 2, "inserted": 2, "enriched": 2}
+    assert body["news"] == {"refreshed": True, "fetched": 2, "inserted": 2, "queued": 2}
 
 
 def test_add_unknown_ticker_rejected(client):
@@ -91,6 +95,8 @@ def test_list_stocks(client):
     assert row["company_name"] == "Apple Inc"
     assert row["article_count"] == 2
     assert row["latest_published_at"] == "2025-07-08T15:53:20Z"
+    assert row["neutral_count"] == 2  # fixture AI tags everything neutral
+    assert row["bullish_count"] == 0
 
 
 def test_stock_news_reads_from_cache(client):
@@ -120,7 +126,7 @@ def test_refresh_respects_ttl(client):
     client.post("/stocks", json={"ticker": "AAPL"})  # stamps last_fetch
     resp = client.post("/stocks/AAPL/refresh")
     assert resp.status_code == 200
-    assert resp.json() == {"refreshed": False, "fetched": 0, "inserted": 0, "enriched": 0}
+    assert resp.json() == {"refreshed": False, "fetched": 0, "inserted": 0, "queued": 0}
 
 
 def test_refresh_fetches_after_ttl_expiry(client, monkeypatch):
