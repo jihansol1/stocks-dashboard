@@ -16,6 +16,7 @@ export default defineConfig({
     proxy: {
       "/stocks": "http://127.0.0.1:8000",
       "/search": "http://127.0.0.1:8000",
+      "/symbols": "http://127.0.0.1:8000",
       "/health": "http://127.0.0.1:8000",
     },
   },

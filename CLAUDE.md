@@ -57,6 +57,11 @@ These are settled. Don't undo them without a reason that's written down here.
 5. **AI runs at ingestion, not on view.** Summarize and tag each article once, when it
    enters the cache, and store the result on the row. Never summarize on render. This
    bounds LLM cost to the number of unique articles rather than article-views.
+   Enrichment is **asynchronous**: articles are cached and the API responds
+   immediately; a background worker pool (8 concurrent calls, `enrich.py`) fills in
+   summary/sentiment, guarded by `summary IS NULL` so nothing is double-paid. A
+   synchronous version blocked `POST /stocks` for 6+ minutes on newsy tickers.
+   SQLite runs in WAL mode so background writers coexist with request reads.
 
 6. **Search is FTS5 first, embeddings later.** v1 is SQLite FTS5 keyword search over
    cached articles. v2 (Phase 7) swaps in embeddings at ingestion and vector similarity
@@ -99,6 +104,15 @@ Phase 7 adds an embedding column or a companion table keyed by `articles.id`.
 - Verify exact endpoint paths and parameter names against current Finnhub docs before
   wiring; the shape above is stable but field names may differ.
 - Key in `FINNHUB_API_KEY` (env, never committed).
+
+**Yahoo Finance chart API (price history only)**
+- Powers the sidebar sparklines and the interactive chart panel. Finnhub's free
+  tier gates historical candles (`/stock/candle` returns 403), so price series
+  come from Yahoo's public chart endpoint (no key, unofficial). Confined to the
+  thin `prices.py` module with a 5 minute in-memory cache per ticker+range; if
+  it breaks or a paid Finnhub tier arrives, swap that one module.
+- Prices are display-only research context. No portfolio valuation, no trading
+  (see non-goals).
 
 **Anthropic Messages API**
 - One call per new article at ingestion. Prompt for a short summary and a

@@ -3,11 +3,12 @@
 import logging
 import sqlite3
 from contextlib import asynccontextmanager
+from functools import lru_cache
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config, db, refresh
+from . import config, db, prices, refresh
 from . import finnhub_client
 from .finnhub_client import FinnhubError
 
@@ -43,6 +44,35 @@ def health():
     }
 
 
+MAX_SYMBOL_SUGGESTIONS = 8
+
+
+@lru_cache(maxsize=256)
+def _symbol_suggestions(query: str) -> tuple[dict, ...]:
+    # Cached per query text so typeahead keystrokes don't drain Finnhub quota.
+    suggestions = []
+    for item in finnhub_client.search_symbol(query):
+        symbol = item.get("symbol")
+        if not symbol:
+            continue
+        suggestions.append({"ticker": symbol, "name": item.get("description", "")})
+        if len(suggestions) >= MAX_SYMBOL_SUGGESTIONS:
+            break
+    return tuple(suggestions)
+
+
+@app.get("/symbols")
+def symbol_suggestions(q: str = ""):
+    """Typeahead for the add-stock input: symbol matches for a partial query."""
+    q = q.strip().upper()
+    if not q:
+        return []
+    try:
+        return list(_symbol_suggestions(q))
+    except FinnhubError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.post("/stocks", status_code=201)
 def add_stock(body: StockCreate, conn: sqlite3.Connection = Depends(get_db)):
     try:
@@ -71,7 +101,7 @@ def add_stock(body: StockCreate, conn: sqlite3.Connection = Depends(get_db)):
         news = refresh.refresh_ticker(conn, ticker)
     except FinnhubError:
         logger.exception("Initial news fetch failed for %s", ticker)
-        news = {"refreshed": False, "fetched": 0, "inserted": 0, "enriched": 0}
+        news = {"refreshed": False, "fetched": 0, "inserted": 0, "queued": 0}
 
     return {"ticker": ticker, "company_name": resolved["company_name"], "news": news}
 
@@ -134,6 +164,24 @@ def refresh_stock(ticker: str, conn: sqlite3.Connection = Depends(get_db)):
     try:
         return refresh.refresh_ticker(conn, ticker)
     except FinnhubError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@app.get("/stocks/{ticker}/prices")
+def stock_prices(
+    ticker: str,
+    range: str = "1d",
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    """Price series for the sidebar sparkline and the chart panel."""
+    ticker = ticker.upper()
+    if conn.execute("SELECT 1 FROM watchlist WHERE ticker = ?", (ticker,)).fetchone() is None:
+        raise HTTPException(status_code=404, detail="Ticker not on watchlist")
+    if range not in prices.RANGES:
+        raise HTTPException(status_code=400, detail=f"range must be one of {sorted(prices.RANGES)}")
+    try:
+        return prices.get_prices(ticker, range)
+    except prices.PriceError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
 
 
