@@ -115,7 +115,10 @@ def list_stocks(conn: sqlite3.Connection = Depends(get_db)):
         """
         SELECT w.ticker, w.company_name, w.added_at,
                COUNT(a.id)          AS article_count,
-               MAX(a.published_at)  AS latest_published_at
+               MAX(a.published_at)  AS latest_published_at,
+               SUM(CASE WHEN a.sentiment = 'bullish' THEN 1 ELSE 0 END) AS bullish_count,
+               SUM(CASE WHEN a.sentiment = 'bearish' THEN 1 ELSE 0 END) AS bearish_count,
+               SUM(CASE WHEN a.sentiment = 'neutral' THEN 1 ELSE 0 END) AS neutral_count
         FROM watchlist w
         LEFT JOIN articles a ON a.ticker = w.ticker
         GROUP BY w.ticker

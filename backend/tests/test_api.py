@@ -95,6 +95,8 @@ def test_list_stocks(client):
     assert row["company_name"] == "Apple Inc"
     assert row["article_count"] == 2
     assert row["latest_published_at"] == "2025-07-08T15:53:20Z"
+    assert row["neutral_count"] == 2  # fixture AI tags everything neutral
+    assert row["bullish_count"] == 0
 
 
 def test_stock_news_reads_from_cache(client):

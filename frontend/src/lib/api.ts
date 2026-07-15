@@ -8,6 +8,9 @@ export interface Stock {
   added_at: string
   article_count: number
   latest_published_at: string | null
+  bullish_count: number | null
+  bearish_count: number | null
+  neutral_count: number | null
 }
 
 export interface Article {
