@@ -3,6 +3,7 @@
 import logging
 import sqlite3
 from contextlib import asynccontextmanager
+from functools import lru_cache
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
@@ -43,6 +44,35 @@ def health():
     }
 
 
+MAX_SYMBOL_SUGGESTIONS = 8
+
+
+@lru_cache(maxsize=256)
+def _symbol_suggestions(query: str) -> tuple[dict, ...]:
+    # Cached per query text so typeahead keystrokes don't drain Finnhub quota.
+    suggestions = []
+    for item in finnhub_client.search_symbol(query):
+        symbol = item.get("symbol")
+        if not symbol:
+            continue
+        suggestions.append({"ticker": symbol, "name": item.get("description", "")})
+        if len(suggestions) >= MAX_SYMBOL_SUGGESTIONS:
+            break
+    return tuple(suggestions)
+
+
+@app.get("/symbols")
+def symbol_suggestions(q: str = ""):
+    """Typeahead for the add-stock input: symbol matches for a partial query."""
+    q = q.strip().upper()
+    if not q:
+        return []
+    try:
+        return list(_symbol_suggestions(q))
+    except FinnhubError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
 @app.post("/stocks", status_code=201)
 def add_stock(body: StockCreate, conn: sqlite3.Connection = Depends(get_db)):
     try:
@@ -71,7 +101,7 @@ def add_stock(body: StockCreate, conn: sqlite3.Connection = Depends(get_db)):
         news = refresh.refresh_ticker(conn, ticker)
     except FinnhubError:
         logger.exception("Initial news fetch failed for %s", ticker)
-        news = {"refreshed": False, "fetched": 0, "inserted": 0, "enriched": 0}
+        news = {"refreshed": False, "fetched": 0, "inserted": 0, "queued": 0}
 
     return {"ticker": ticker, "company_name": resolved["company_name"], "news": news}
 

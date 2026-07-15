@@ -62,15 +62,21 @@ END;
 
 
 def get_connection(db_path: str | None = None) -> sqlite3.Connection:
-    conn = sqlite3.connect(db_path or config.DB_PATH)
+    # check_same_thread=False: FastAPI may open and close a request's
+    # connection on different threadpool threads. Each connection is still
+    # used by one request (or one enrichment worker) at a time.
+    conn = sqlite3.connect(db_path or config.DB_PATH, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # Background enrichment writes from worker threads while requests read.
+    conn.execute("PRAGMA busy_timeout = 10000")
     return conn
 
 
 def init_db(db_path: str | None = None) -> None:
     conn = get_connection(db_path)
     try:
+        conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(SCHEMA)
         conn.commit()
     finally:

@@ -57,6 +57,11 @@ These are settled. Don't undo them without a reason that's written down here.
 5. **AI runs at ingestion, not on view.** Summarize and tag each article once, when it
    enters the cache, and store the result on the row. Never summarize on render. This
    bounds LLM cost to the number of unique articles rather than article-views.
+   Enrichment is **asynchronous**: articles are cached and the API responds
+   immediately; a background worker pool (8 concurrent calls, `enrich.py`) fills in
+   summary/sentiment, guarded by `summary IS NULL` so nothing is double-paid. A
+   synchronous version blocked `POST /stocks` for 6+ minutes on newsy tickers.
+   SQLite runs in WAL mode so background writers coexist with request reads.
 
 6. **Search is FTS5 first, embeddings later.** v1 is SQLite FTS5 keyword search over
    cached articles. v2 (Phase 7) swaps in embeddings at ingestion and vector similarity

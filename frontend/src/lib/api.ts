@@ -26,13 +26,18 @@ export interface RefreshStats {
   refreshed: boolean
   fetched: number
   inserted: number
-  enriched: number
+  queued: number
 }
 
 export interface AddStockResult {
   ticker: string
   company_name: string | null
   news: RefreshStats
+}
+
+export interface SymbolSuggestion {
+  ticker: string
+  name: string
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -77,4 +82,8 @@ export function refreshStock(ticker: string): Promise<RefreshStats> {
 
 export function searchArticles(q: string): Promise<Article[]> {
   return request(`/search?q=${encodeURIComponent(q)}`)
+}
+
+export function getSymbolSuggestions(q: string): Promise<SymbolSuggestion[]> {
+  return request(`/symbols?q=${encodeURIComponent(q)}`)
 }
