@@ -77,15 +77,17 @@ export function PriceChartPanel({
       }
       const up = (series.change ?? 0) >= 0
       const color = up ? "#16a34a" : "#dc2626"
+      const isDark = document.documentElement.classList.contains("dark")
       chart = createChart(container, {
         autoSize: true,
         layout: {
           background: { type: ColorType.Solid, color: "transparent" },
+          textColor: isDark ? "#a3a3a3" : "#525252",
           attributionLogo: false,
         },
         grid: {
           vertLines: { visible: false },
-          horzLines: { color: "rgba(0,0,0,0.06)" },
+          horzLines: { color: isDark ? "rgba(255,255,255,0.07)" : "rgba(0,0,0,0.06)" },
         },
         timeScale: {
           timeVisible: series.range === "1d" || series.range === "5d",
