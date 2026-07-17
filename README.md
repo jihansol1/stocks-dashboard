@@ -162,8 +162,15 @@ writers coexist with request reads.
 
 ## Roadmap
 
-- **Semantic search.** Embed articles at ingestion and serve vector similarity
-  behind the same search bar (planned Phase 7).
+- **Semantic search (Phase 7, designed, in progress).** Hybrid search behind the
+  existing search bar: articles are embedded at ingestion (Voyage AI
+  `voyage-3-lite`, stored in sqlite-vec next to the FTS5 table) and queries merge
+  vector similarity with FTS5 rankings via reciprocal rank fusion. Conceptual
+  queries like "supply chain problems" will match articles that never use those
+  words, while exact tickers and names keep keyword precision. Degrades to
+  FTS-only search if no `VOYAGE_API_KEY` is configured. Ships with a 90-day
+  article retention rule to bound the vector and search corpus. Full design:
+  [docs/superpowers/specs/2026-07-17-semantic-search-design.md](docs/superpowers/specs/2026-07-17-semantic-search-design.md).
 
 ## Non-goals
 
