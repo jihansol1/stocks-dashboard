@@ -112,3 +112,17 @@ export interface PriceSeries {
 export function getPrices(ticker: string, range: PriceRange = "1d"): Promise<PriceSeries> {
   return request(`/stocks/${encodeURIComponent(ticker)}/prices?range=${range}`)
 }
+
+export interface AskResult {
+  ticker: string
+  question: string
+  answer: string
+}
+
+export function askAboutStock(ticker: string, question: string): Promise<AskResult> {
+  return request(`/stocks/${encodeURIComponent(ticker)}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  })
+}
