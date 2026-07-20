@@ -20,15 +20,17 @@ export function StockChatPanel({ ticker }: { ticker: string }) {
     if (!question || busy) return
     setInput("")
     setBusy(true)
-    setMessages((prev) => [...prev, { question }])
+    let index = -1
+    setMessages((prev) => {
+      index = prev.length
+      return [...prev, { question }]
+    })
     try {
       const result = await askAboutStock(ticker, question)
-      setMessages((prev) =>
-        prev.map((m, i) => (i === prev.length - 1 ? { ...m, answer: result.answer } : m)),
-      )
+      setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, answer: result.answer } : m)))
     } catch (e) {
       const error = e instanceof Error ? e.message : "Failed to get an answer"
-      setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, error } : m)))
+      setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, error } : m)))
     } finally {
       setBusy(false)
     }
