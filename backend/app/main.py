@@ -8,8 +8,9 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel
 
-from . import config, db, prices, refresh
+from . import analyst, config, db, prices, refresh
 from . import finnhub_client
+from .analyst import AnalystError
 from .finnhub_client import FinnhubError
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,10 @@ def get_db():
 
 class StockCreate(BaseModel):
     ticker: str
+
+
+class AskRequest(BaseModel):
+    question: str
 
 
 @app.get("/health")
@@ -157,6 +162,66 @@ def stock_news(
         (ticker, limit),
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+MAX_ASK_ARTICLES = 30
+
+
+def _compile_news_context(rows: list[sqlite3.Row]) -> str:
+    lines = []
+    for row in rows:
+        line = f"[{row['published_at'] or 'unknown date'}"
+        if row["source"]:
+            line += f", {row['source']}"
+        line += f"] {row['headline']}"
+        if row["summary"]:
+            line += f" Summary: {row['summary']}"
+        if row["sentiment"]:
+            line += f" (sentiment: {row['sentiment']})"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+@app.post("/stocks/{ticker}/ask")
+def ask_about_stock(
+    ticker: str,
+    body: AskRequest,
+    conn: sqlite3.Connection = Depends(get_db),
+):
+    ticker = ticker.upper()
+    if conn.execute("SELECT 1 FROM watchlist WHERE ticker = ?", (ticker,)).fetchone() is None:
+        raise HTTPException(status_code=404, detail="Ticker not on watchlist")
+
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question is empty")
+
+    # Read path: reuses the cached articles only, never calls Finnhub
+    # (decision 2 in CLAUDE.md).
+    rows = conn.execute(
+        """
+        SELECT headline, source, url, published_at, summary, sentiment
+        FROM articles
+        WHERE ticker = ?
+        ORDER BY published_at DESC
+        LIMIT ?
+        """,
+        (ticker, MAX_ASK_ARTICLES),
+    ).fetchall()
+
+    if not rows:
+        return {
+            "ticker": ticker,
+            "question": question,
+            "answer": "There is no cached news for this stock yet. Try refreshing it first.",
+        }
+
+    try:
+        result = analyst.analyze(question, ticker, _compile_news_context(rows))
+    except AnalystError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    return {"ticker": ticker, "question": question, "answer": result["final_response"]}
 
 
 @app.post("/stocks/{ticker}/refresh")
